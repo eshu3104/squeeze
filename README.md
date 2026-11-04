@@ -79,7 +79,7 @@ Live run on the Meta Model API (`muse-spark-1.3`), from the manual GitHub Action
 
 The PDF savings are dominated by page-image cost, because native PDF input bills a page image per page.
 
-What Muse Spark returned for the bar chart in the test deck (1,560 tokens as an image, about 30 as text), with the exact values drawn in the picture:
+What Muse Spark returned for the bar chart in the test deck (1,560 tokens as an image, 38 as text), with the exact values drawn in the picture:
 
 ```
 | Q1 | Q2 | Q3 | Q4 |
