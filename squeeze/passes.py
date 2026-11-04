@@ -58,8 +58,9 @@ def _plain(ln):
 
 
 def _edges(text):
-    lines = [ln for ln in text.split("\n") if ln.strip()]
-    return {ln.strip() for ln in (lines[:1] + lines[-1:]) if _plain(ln)}
+    # Labels Squeeze adds itself (speaker notes, chart data) are never a footer, so look past them.
+    lines = [ln for ln in text.split("\n") if _plain(ln) and not ln.startswith(("Notes:", "Chart:"))]
+    return {ln.strip() for ln in lines[:1] + lines[-1:]}
 
 
 def repeated_lines(sections):

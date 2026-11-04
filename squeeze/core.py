@@ -58,6 +58,10 @@ def render(sections: list[Section]) -> str:
     return "\n\n".join(parts) + "\n"
 
 
+def _text_file(raw: str):
+    return [Section("", raw)], count_tokens(raw)
+
+
 def extract(source: str) -> tuple[str, list[Section], int]:
     """Return (kind, sections, tokens_before). kind names the input for prompts and the UI."""
     from squeeze import extractors
@@ -70,27 +74,38 @@ def extract(source: str) -> tuple[str, list[Section], int]:
             r.raise_for_status()
         except httpx.HTTPError as e:
             raise ValueError(f"could not fetch {source}: {e}") from e
-        if "json" in r.headers.get("content-type", ""):
-            return "JSON response", *extractors.json_doc(r.text)
-        return "web page", *extractors.html(r.text)
+        ctype = r.headers.get("content-type", "")
+        if "pdf" in ctype:
+            return "PDF", *_guard(extractors.pdf, r.content)
+        if "json" in ctype:
+            return "JSON response", *_guard(extractors.json_doc, r.text)
+        if ctype.startswith("text/plain"):
+            return "text file", *_text_file(r.text)
+        return "web page", *extractors.html(r.content)
 
     path = Path(source)
     suffix = path.suffix.lower()
     if suffix == ".pptx":
-        return "slide deck", *extractors.pptx(source)
+        return "slide deck", *_guard(extractors.pptx, source)
     if suffix == ".pdf":
-        return "PDF", *extractors.pdf(source)
+        return "PDF", *_guard(extractors.pdf, source)
     if suffix in (".html", ".htm"):
-        return "web page", *extractors.html(path.read_text(encoding="utf-8", errors="replace"))
+        return "web page", *extractors.html(path.read_bytes())
     if suffix == ".json":
-        try:
-            return "JSON document", *extractors.json_doc(path.read_text(encoding="utf-8"))
-        except ValueError as e:
-            raise ValueError(f"not valid JSON: {e}") from e
+        return "JSON document", *_guard(extractors.json_doc, path.read_text(encoding="utf-8-sig"))
     if suffix in (".txt", ".md"):
-        raw = path.read_text(encoding="utf-8", errors="replace")
-        return "text file", [Section("", raw)], count_tokens(raw)
+        return "text file", *_text_file(path.read_text(encoding="utf-8", errors="replace"))
     raise ValueError(f"unsupported input type {suffix or source!r}: use .pptx, .pdf, .html, .json, .txt, .md or a URL")
+
+
+def _guard(fn, arg):
+    """Corrupt, encrypted or malformed files become a clear ValueError instead of a crash."""
+    try:
+        return fn(arg)
+    except ValueError:
+        raise
+    except Exception as e:
+        raise ValueError(f"could not read this file ({type(e).__name__}): {str(e)[:160]}") from e
 
 
 def compress(source: str, images: str = "describe", fidelity: bool = False) -> Result:
@@ -100,10 +115,14 @@ def compress(source: str, images: str = "describe", fidelity: bool = False) -> R
 
     kind, sections, before = extract(source)
     original = render(sections)  # extracted text, before any pass: the reference for fidelity
+    if not original.strip() and not any(s.images for s in sections):
+        raise ValueError("no readable content found (a page that needs JavaScript, or an empty file?)")
 
     by_pass = {}
     current = count_tokens(original)
-    by_pass["extract"] = before - current
+    # PPTX bills each embedded image; credit that to the image step. A PDF's baseline is page images instead.
+    img_cost = sum(image_tokens(i.width, i.height) for s in sections for i in s.images) if kind == "slide deck" else 0
+    by_pass["extract"] = before - current - img_cost
 
     for name, fn in passes.TEXT_PASSES:  # before images, so model-written text is never edited
         sections = fn(sections)
@@ -112,11 +131,9 @@ def compress(source: str, images: str = "describe", fidelity: bool = False) -> R
         current = after
 
     report = image_pass.run(sections, kind, keep=images)
-    after = count_tokens(render(sections))
-    by_pass["images"] = current - after  # negative: descriptions add text back
-
     text = render(sections)
     after = count_tokens(text)
+    by_pass["images"] = img_cost + current - after
     fid = {"numbers_kept": check.numbers_kept(original, text)}
     if fidelity:
         try:

@@ -43,6 +43,17 @@ def make_pptx(path: Path, slides=4):
                 for c, val in enumerate(row):
                     t.cell(r, c).text = val
             s.notes_slide.notes_text_frame.text = "Mention the South dip."
+        if n == 3:  # a native PowerPoint chart: data lives in the file, no picture
+            from pptx.chart.data import CategoryChartData
+            from pptx.enum.chart import XL_CHART_TYPE
+
+            data = CategoryChartData()
+            data.categories = ["Q1", "Q2", "Q3"]
+            data.add_series("Revenue", (4.7, 5.9, 6.3))
+            s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, Inches(1), Inches(3), Inches(6), Inches(3), data)
+    pic = prs.slides.add_slide(prs.slide_layouts[8])  # "Picture with Caption": the picture sits in a placeholder
+    pic.placeholders[1].insert_picture(io.BytesIO(chart_png()))
+    pic.shapes.title.text = "Customer photo wall"
     prs.save(path)
 
 
@@ -77,7 +88,7 @@ Read the <a href="https://example.org/data?utm_source=newsletter&amp;utm_medium=
 
 
 def make_html(path: Path):
-    path.write_text(PAGE * 1)
+    path.write_text(PAGE)
 
 
 def make_json(path: Path):

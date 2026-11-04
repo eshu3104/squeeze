@@ -26,7 +26,7 @@ def test_every_format_shrinks_and_accounts_exactly(tmp_path, name, make):
     assert s["tokens_after"] == count_tokens(r.text)
     assert s["tokens_after"] < s["tokens_before"]
     assert sum(s["saved_by_pass"].values()) == s["tokens_before"] - s["tokens_after"]
-    assert r.fidelity["numbers_kept"] in (None, 1.0)  # deterministic passes keep every number
+    assert r.fidelity["numbers_kept"] == 1.0  # deterministic passes keep every number
 
 
 def test_deck_drops_logos_keeps_chart_and_footer_once(tmp_path):
@@ -34,9 +34,10 @@ def test_deck_drops_logos_keeps_chart_and_footer_once(tmp_path):
     fx.make_pptx(f)
     r = compress(str(f))
     classes = [i["class"] for i in r.images]
-    assert classes.count("decorative") == 4 and classes.count("informative") == 1
+    assert classes.count("decorative") == 4 and classes.count("informative") == 2
     assert r.text.count("Northwind Labs | Internal use only") == 1
-    assert r.stats["image_model_calls"] == 1  # logos are tiny: never sent
+    assert r.stats["image_model_calls"] == 1  # logos are tiny: never sent; the repeated chart is sent once
+    assert r.stats["saved_by_pass"]["images"] > 1000  # image savings credited to the image step
 
 
 def test_api_compresses_upload(tmp_path):
@@ -65,3 +66,27 @@ def test_cli_writes_markdown_and_manifest(tmp_path, capsys):
     manifest = json.loads((tmp_path / "out" / "deck.manifest.json").read_text())
     assert "thumb" not in manifest["images"][0]
     assert "% smaller" in capsys.readouterr().out
+
+
+def test_bom_json_url_pdf_and_empty_inputs(tmp_path, monkeypatch):
+    import httpx
+
+    j = tmp_path / "bom.json"
+    j.write_bytes(b"\xef\xbb\xbf" + json.dumps({"a": 1}).encode())
+    assert compress(str(j)).text.strip() == '{"a":1}'
+
+    p = tmp_path / "r.pdf"
+    fx.make_pdf(p)
+    monkeypatch.setattr(httpx, "get", lambda *a, **k: httpx.Response(
+        200, content=p.read_bytes(), headers={"content-type": "application/pdf"}, request=httpx.Request("GET", a[0])))
+    assert "margin was 21.5%" in compress("https://example.org/r.pdf").text
+
+    empty = tmp_path / "e.html"
+    empty.write_text("<html><body><script>app()</script></body></html>")
+    with pytest.raises(ValueError, match="no readable content"):
+        compress(str(empty))
+
+    bad = tmp_path / "bad.pptx"
+    bad.write_bytes(b"not a zip")
+    with pytest.raises(ValueError, match="could not read this file"):
+        compress(str(bad))
