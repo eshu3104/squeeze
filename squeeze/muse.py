@@ -57,12 +57,18 @@ def _request(prompt: str, image: bytes | None) -> str:
     if image:
         b64 = base64.b64encode(image).decode()
         content.append({"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}})
-    r = httpx.post(f"{url}/chat/completions", timeout=60,
-                   headers={"Authorization": f"Bearer {key}"},
-                   json={"model": model, "temperature": 0, "messages": [{"role": "user", "content": content}]})
+    try:
+        r = httpx.post(f"{url}/chat/completions", timeout=60,
+                       headers={"Authorization": f"Bearer {key}"},
+                       json={"model": model, "temperature": 0, "messages": [{"role": "user", "content": content}]})
+    except httpx.HTTPError as e:
+        raise MuseError(f"could not reach {backend()}: {type(e).__name__}") from e
     if r.status_code != 200:
         raise MuseError(f"{backend()} returned {r.status_code}: {r.text[:200]}")
-    return r.json()["choices"][0]["message"]["content"]
+    try:
+        return r.json()["choices"][0]["message"]["content"]
+    except (ValueError, KeyError, IndexError, TypeError) as e:
+        raise MuseError(f"unexpected reply shape from {backend()}: {r.text[:200]}") from e
 
 
 def _mock(prompt: str, image: bytes | None) -> str:

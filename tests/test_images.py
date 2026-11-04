@@ -81,6 +81,19 @@ def test_dotenv_loads_values_and_shell_wins(tmp_path, monkeypatch):
     monkeypatch.delenv("SQZ_A")
 
 
+def test_network_failure_becomes_muse_error(monkeypatch):
+    import httpx
+
+    def down(*a, **k):
+        raise httpx.ConnectError("refused")
+
+    monkeypatch.setenv("SQUEEZE_BACKEND", "meta-api")
+    monkeypatch.setenv("META_API_KEY", "test-key")
+    monkeypatch.setattr(httpx, "post", down)
+    report = images.run(_sec(CHART), "slide deck")
+    assert report[0]["class"] == "error" and "test-key" not in report[0]["error"]
+
+
 def test_missing_key_raises_clear_error(monkeypatch):
     monkeypatch.setenv("SQUEEZE_BACKEND", "meta-api")
     monkeypatch.delenv("META_API_KEY", raising=False)
