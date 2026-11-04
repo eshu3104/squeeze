@@ -1,0 +1,35 @@
+name: Demo cache
+
+# Manual only: runs the demo files through real Muse Spark (with the fact check)
+# and prints the cached answers, so the demo video can replay real model output.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  demo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+    env:
+      SQUEEZE_BACKEND: meta-api
+      META_API_KEY: ${{ secrets.META_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e .
+      - name: Squeeze the demo files with Muse Spark
+        run: squeeze demo/* --fidelity --out out
+      - name: Print cached answers
+        run: |
+          python - <<'EOF'
+          from pathlib import Path
+          for f in sorted(Path(".squeeze-cache").glob("*.json")):
+              print("CACHE", f.name, f.read_text())
+          EOF
