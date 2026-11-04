@@ -11,7 +11,6 @@ dependencies = [
     "pypdfium2",
     "trafilatura",
     "pillow",
-    "imagehash",
     "httpx",
     "fastapi",
     "uvicorn",
@@ -25,11 +24,8 @@ dev = ["pytest", "reportlab"]
 squeeze = "squeeze.cli:main"
 
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
-
-[tool.setuptools]
-packages = ["squeeze"]
 
 [tool.setuptools.package-data]
 squeeze = ["static/*"]

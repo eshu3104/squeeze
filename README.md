@@ -33,11 +33,11 @@ cp .env.example .env     # then fill in your keys; .env is git-ignored
 
 Backends, set with `SQUEEZE_BACKEND` in `.env`:
 
-- `meta-api` (default): Muse Spark on the Meta Model API. Set `META_BASE_URL`, `META_API_KEY`, `META_MODEL`.
-- `openai-compat`: Muse Spark Open on Baseten or Modal. Set `OPENAI_COMPAT_BASE_URL`, `OPENAI_COMPAT_API_KEY`; the model defaults to `meta-models/muse-spark-open-1026`.
+- `meta-api` (default): Muse Spark on the Meta Model API. Only `META_API_KEY` is required; the base URL defaults to `https://api.meta.ai/v1` and the model to `muse-spark-1.3`.
+- `openai-compat`: Muse Spark Open on Baseten or Modal. Set `OPENAI_COMPAT_BASE_URL` and `OPENAI_COMPAT_API_KEY`; the model defaults to `meta-models/muse-spark-open-1026`.
 - `mock`: offline stand-in for tests and dry runs. Its image text is a placeholder, never a real result.
 
-Load `.env` into your shell before running (`set -a; source .env; set +a`).
+Squeeze reads `./.env` when it starts; variables already set in your shell take priority. The first run downloads tiktoken's vocabulary file once, so run it online before a demo.
 
 ## Use
 

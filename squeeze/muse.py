@@ -1,13 +1,13 @@
 """The one place Squeeze talks to Meta's models.
 
 Backends (SQUEEZE_BACKEND):
-  meta-api       Muse Spark on the Meta Model API      (META_BASE_URL, META_API_KEY, META_MODEL)
+  meta-api       Muse Spark on the Meta Model API      (META_API_KEY; META_BASE_URL, META_MODEL optional)
   openai-compat  Muse Spark Open on Baseten or Modal   (OPENAI_COMPAT_BASE_URL, OPENAI_COMPAT_API_KEY, OPENAI_COMPAT_MODEL)
   mock           offline stand-in for tests and dry runs; never used for real results
 
-Both real backends speak the OpenAI-style chat-completions format.
-shortcut: assumes the Meta Model API accepts that format with base64 image URLs;
-confirm with one call against Meta's quickstart and adjust _request() if not.
+Both real backends speak the OpenAI-style chat-completions format (the Meta Model
+API documents an OpenAI-compatible /chat/completions endpoint at api.meta.ai/v1).
+shortcut: the image part uses OpenAI's base64 image_url form; confirm with one call.
 """
 import base64
 import hashlib
@@ -18,6 +18,16 @@ from pathlib import Path
 
 import httpx
 
+def _load_dotenv(path=Path(".env")):
+    """Read KEY=value lines from ./.env; variables already set in the shell win."""
+    if path.is_file():
+        for line in path.read_text().splitlines():
+            key, sep, value = line.strip().partition("=")
+            if sep and not key.startswith("#") and value:
+                os.environ.setdefault(key.strip(), value.strip().strip("\"'"))
+
+
+_load_dotenv()
 CACHE = Path(os.environ.get("SQUEEZE_CACHE", ".squeeze-cache"))
 
 
@@ -31,12 +41,13 @@ def backend() -> str:
 
 def _config():
     if backend() == "openai-compat":
-        prefix, default_model = "OPENAI_COMPAT", "meta-models/muse-spark-open-1026"
+        prefix, default_url, default_model = "OPENAI_COMPAT", None, "meta-models/muse-spark-open-1026"
     else:
-        prefix, default_model = "META", "muse-spark"
-    url, key = os.environ.get(f"{prefix}_BASE_URL"), os.environ.get(f"{prefix}_API_KEY")
+        prefix, default_url, default_model = "META", "https://api.meta.ai/v1", "muse-spark-1.3"
+    url = os.environ.get(f"{prefix}_BASE_URL") or default_url
+    key = os.environ.get(f"{prefix}_API_KEY")
     if not url or not key:
-        raise MuseError(f"set {prefix}_BASE_URL and {prefix}_API_KEY (see .env.example)")
+        raise MuseError(f"set {prefix}_API_KEY" + ("" if default_url else f" and {prefix}_BASE_URL") + " in .env (see .env.example)")
     return url.rstrip("/"), key, os.environ.get(f"{prefix}_MODEL", default_model)
 
 

@@ -1,8 +1,8 @@
 """Image pass: Muse Spark decides what each image is worth and replaces it with text."""
 import base64
+import hashlib
 import io
 
-import imagehash
 from PIL import Image as PILImage
 
 from squeeze import muse
@@ -53,7 +53,8 @@ def run(sections, where: str, keep: str = "describe") -> list[dict]:
             else:
                 png, pil = _png(img)
                 entry["thumb"] = _thumb(pil)
-                h = str(imagehash.phash(pil))
+                # shortcut: exact-bytes match; a resized copy of a picture gets its own call
+                h = hashlib.sha256(img.data).hexdigest()
                 if h in by_hash:  # same picture again (template art, repeated logo): no second call
                     entry.update({k: by_hash[h][k] for k in ("class", "description")}, cached=True)
                 else:

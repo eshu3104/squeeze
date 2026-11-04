@@ -69,6 +69,18 @@ def test_mock_backend_end_to_end_and_cache(monkeypatch):
     assert again[0]["cached"] is True
 
 
+def test_dotenv_loads_values_and_shell_wins(tmp_path, monkeypatch):
+    f = tmp_path / ".env"
+    f.write_text('# comment\nSQZ_A="one"\nSQZ_B=two\nSQZ_EMPTY=\n')
+    monkeypatch.setenv("SQZ_B", "shell")
+    monkeypatch.delenv("SQZ_A", raising=False)
+    monkeypatch.delenv("SQZ_EMPTY", raising=False)
+    muse._load_dotenv(f)
+    import os
+    assert os.environ["SQZ_A"] == "one" and os.environ["SQZ_B"] == "shell" and "SQZ_EMPTY" not in os.environ
+    monkeypatch.delenv("SQZ_A")
+
+
 def test_missing_key_raises_clear_error(monkeypatch):
     monkeypatch.setenv("SQUEEZE_BACKEND", "meta-api")
     monkeypatch.delenv("META_API_KEY", raising=False)
