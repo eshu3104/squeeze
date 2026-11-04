@@ -92,3 +92,15 @@ def test_bom_json_url_pdf_and_empty_inputs(tmp_path, monkeypatch):
     bad.write_bytes(b"not a zip")
     with pytest.raises(ValueError, match="could not read this file"):
         compress(str(bad))
+
+
+def test_model_usage_summary():
+    from squeeze.core import model_usage
+
+    ledger = [{"kind": "image", "cached": False, "input": 900, "output": 100},
+              {"kind": "fact_check", "cached": True, "input": 700, "output": 300}]
+    u = model_usage(ledger, saved_per_use=2000)
+    assert u["image"] == {"calls": 1, "input_tokens": 900, "output_tokens": 100}
+    assert u["fact_check"]["input_tokens"] == 700 and u["new_calls"] == 1 and u["complete"]
+    assert u["image_break_even_uses"] == 0.5
+    assert model_usage([{"kind": "image", "cached": False, "input": None, "output": None}], 2000)["image_break_even_uses"] is None

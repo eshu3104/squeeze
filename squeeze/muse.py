@@ -10,6 +10,7 @@ API documents an OpenAI-compatible /chat/completions endpoint at api.meta.ai/v1)
 shortcut: the image part uses OpenAI's base64 image_url form; confirm with one call.
 """
 import base64
+import contextvars
 import hashlib
 import json
 import os
@@ -35,6 +36,24 @@ class MuseError(RuntimeError):
     pass
 
 
+# Every model call in the current compress() run, with the tokens the API reported for it.
+# A context variable, so concurrent web requests each keep their own ledger.
+_ledger = contextvars.ContextVar("ledger", default=None)
+
+
+def start_ledger() -> list:
+    ledger = []
+    _ledger.set(ledger)
+    return ledger
+
+
+def _record(image, cached, usage):
+    ledger = _ledger.get()
+    if ledger is not None:
+        ledger.append({"kind": "image" if image else "fact_check", "cached": cached,
+                       "input": (usage or {}).get("prompt_tokens"), "output": (usage or {}).get("completion_tokens")})
+
+
 def backend() -> str:
     return os.environ.get("SQUEEZE_BACKEND", "meta-api")
 
@@ -57,7 +76,7 @@ def _config():
     return url.rstrip("/"), key, model
 
 
-def _request(prompt: str, image: bytes | None) -> str:
+def _request(prompt: str, image: bytes | None) -> tuple[str, dict | None]:
     url, key, model = _config()
     content = [{"type": "text", "text": prompt}]
     if image:
@@ -73,12 +92,14 @@ def _request(prompt: str, image: bytes | None) -> str:
     if r.status_code != 200:
         raise MuseError(f"{backend()} returned {r.status_code}: {body}")
     try:
-        text = r.json()["choices"][0]["message"]["content"]
+        reply = r.json()
+        text = reply["choices"][0]["message"]["content"]
     except (ValueError, KeyError, IndexError, TypeError) as e:
         raise MuseError(f"unexpected reply shape from {backend()}: {body}") from e
     if not isinstance(text, str):  # null on a refusal or an exhausted reasoning budget
         raise MuseError(f"no text in reply from {backend()}")
-    return text
+    usage = reply.get("usage")
+    return text, usage if isinstance(usage, dict) else None
 
 
 def _mock(prompt: str, image: bytes | None) -> str:
@@ -103,8 +124,10 @@ def ask_json(prompt: str, image: bytes | None = None) -> tuple[dict, bool]:
     key = hashlib.sha256(f"{name}\0{model}\0{prompt}".encode() + (image or b"")).hexdigest()
     path = CACHE / f"{key}.json"
     if path.exists():
-        return json.loads(path.read_text()), True
-    reply = _mock(prompt, image) if name == "mock" else _request(prompt, image)
+        data = json.loads(path.read_text())
+        _record(image, True, data.pop("_usage", None))  # what the original call cost, paid once
+        return data, True
+    reply, usage = (_mock(prompt, image), None) if name == "mock" else _request(prompt, image)
     m = re.search(r"\{.*\}", reply, re.S)
     if not m:
         raise MuseError(f"no JSON in reply: {reply[:200]}")
@@ -116,6 +139,7 @@ def ask_json(prompt: str, image: bytes | None = None) -> tuple[dict, bool]:
         raise MuseError("reply JSON is not an object")
     CACHE.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(data))
+    tmp.write_text(json.dumps({**data, "_usage": usage}))
     os.replace(tmp, path)  # a run killed mid-write never leaves a broken cache file
+    _record(image, False, usage)
     return data, False

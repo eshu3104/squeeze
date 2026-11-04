@@ -145,3 +145,13 @@ def test_cache_key_includes_model(monkeypatch):
     assert muse.ask_json("p")[1] is True
     monkeypatch.setenv("META_MODEL", "b")
     assert muse.ask_json("p")[1] is False
+
+
+def test_usage_recorded_and_kept_through_cache(monkeypatch):
+    _reply(monkeypatch, 200, {"choices": [{"message": {"content": '{"class": "informative", "description": "x"}'}}],
+                              "usage": {"prompt_tokens": 900, "completion_tokens": 40}})
+    ledger = muse.start_ledger()
+    images.run(_sec(CHART), "slide deck")
+    images.run(_sec(CHART), "slide deck")  # second run: answered from the disk cache
+    assert ledger == [{"kind": "image", "cached": False, "input": 900, "output": 40},
+                      {"kind": "image", "cached": True, "input": 900, "output": 40}]

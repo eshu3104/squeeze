@@ -108,11 +108,29 @@ def _guard(fn, arg):
         raise ValueError(f"could not read this file ({type(e).__name__}): {str(e)[:160]}") from e
 
 
+def model_usage(ledger: list, saved_per_use: int) -> dict:
+    """What Muse Spark itself consumed to produce this output, as the API reported it.
+    Cached answers count at what their original call cost: that cost is paid once."""
+    out = {"calls": len(ledger), "new_calls": sum(not e["cached"] for e in ledger)}
+    known = [e for e in ledger if e["input"] is not None and e["output"] is not None]
+    out["complete"] = len(known) == len(ledger)  # False when a backend or old cache gave no counts
+    for kind in ("image", "fact_check"):
+        part = [e for e in known if e["kind"] == kind]
+        out[kind] = {"calls": len(part), "input_tokens": sum(e["input"] for e in part),
+                     "output_tokens": sum(e["output"] for e in part)}
+    spent = out["image"]["input_tokens"] + out["image"]["output_tokens"]
+    # uses of the compressed text before the image step has paid for itself (the fact check is an optional audit)
+    out["image_break_even_uses"] = round(spent / saved_per_use, 2) if out["complete"] and saved_per_use > 0 else None
+    return out
+
+
 def compress(source: str, images: str = "describe", fidelity: bool = False) -> Result:
     """images: describe | none (see images.run). fidelity: also run Muse Spark probe QA."""
     from squeeze import fidelity as check
     from squeeze import images as image_pass
+    from squeeze import muse
 
+    ledger = muse.start_ledger()
     kind, sections, before = extract(source)
     original = render(sections)  # extracted text, before any pass: the reference for fidelity
     if not original.strip() and not any(s.images for s in sections):
@@ -148,5 +166,6 @@ def compress(source: str, images: str = "describe", fidelity: bool = False) -> R
         "saved_pct": round(100 * (before - after) / before, 1) if before else 0.0,
         "saved_by_pass": by_pass,
         "image_model_calls": sum(r["called"] for r in report),
+        "model_usage": model_usage(ledger, before - after),
     }
     return Result(text=text, stats=stats, images=report, fidelity=fid)

@@ -103,6 +103,7 @@
       <div class="num" id="anum"></div>
       <div class="strip after" id="astrip"></div>
       <p class="saved" id="saved"></p>
+      <p class="lead" id="usage"></p>
     </div>
 
     <div id="fid" hidden>
@@ -203,6 +204,14 @@ function show(r) {
   $("saved").append(`${s.saved_pct}% smaller`,
     Object.assign(document.createElement("small"), { textContent: `${fmt(s.tokens_before - s.tokens_after)} tokens saved on ${s.source}` }));
 
+  const u = s.model_usage || {};
+  const img = u.image || { calls: 0, input_tokens: 0, output_tokens: 0 };
+  const spent = img.input_tokens + img.output_tokens;
+  $("usage").textContent = !u.calls ? "No model calls were needed for this file."
+    : !u.complete ? `Muse Spark made ${u.calls} call${u.calls === 1 ? "" : "s"}; this backend did not report token counts.`
+    : img.calls ? `Muse Spark used ${fmt(spent)} tokens on ${img.calls} image${img.calls === 1 ? "" : "s"}, paid once. ` +
+      (u.image_break_even_uses <= 1 ? "The saving covers that on the first use." : `The saving covers that after ${Math.ceil(u.image_break_even_uses)} uses.`)
+    : "";
   const p = $("passes"); p.innerHTML = "";
   for (const [k, v] of Object.entries(s.saved_by_pass)) {
     if (!v) continue;

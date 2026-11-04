@@ -28,6 +28,15 @@ jobs:
         run: python scripts/check_api.py
       - name: Squeeze the demo files with Muse Spark
         run: squeeze demo/* --fidelity --out out
+      - name: What Muse Spark spent
+        run: |
+          python - <<'EOF'
+          import json
+          from pathlib import Path
+          for f in sorted(Path("out").glob("*.manifest.json")):
+              s = json.loads(f.read_text())["stats"]
+              print("USAGE", json.dumps({"file": f.name, "before": s["tokens_before"], "after": s["tokens_after"], **s["model_usage"]}))
+          EOF
       - name: Show any model errors
         run: grep -h '"error"' out/*.manifest.json || echo "no model errors"
       - name: Print cached answers

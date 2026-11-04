@@ -31,8 +31,10 @@ def main(argv=None):
         for im in manifest["images"]:
             im.pop("thumb", None)
         (out / f"{stem}.manifest.json").write_text(json.dumps(manifest, indent=2))
-        s = r.stats
-        print(f"{src}: {s['tokens_before']:,} -> {s['tokens_after']:,} tokens ({s['saved_pct']}% smaller) -> {out / (stem + '.md')}")
+        s, u = r.stats, r.stats["model_usage"]
+        spent = sum(u[k]["input_tokens"] + u[k]["output_tokens"] for k in ("image", "fact_check"))
+        cost = f", Muse Spark used {spent:,}" if u["calls"] and u["complete"] else ""
+        print(f"{src}: {s['tokens_before']:,} -> {s['tokens_after']:,} tokens ({s['saved_pct']}% smaller{cost}) -> {out / (stem + '.md')}")
 
 
 if __name__ == "__main__":
