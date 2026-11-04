@@ -71,9 +71,9 @@ Generated eval set, `python scripts/eval.py` (add `--fidelity` with a real backe
 
 | File | Tokens before | Tokens after | Saved | Numbers kept |
 |---|---:|---:|---:|---:|
-| deck.pptx (12 slides) | 1,991 | 305 | 84.7% | 100% |
-| report.pdf (8 pages) | 12,176 | 147 | 98.8% | 100% |
-| scanned.pdf (2 pages) | 3,018 | 48 | 98.4% | 100% |
+| deck.pptx (13 slides, 1 native chart, 2 pictures, 12 logos) | 3,601 | 370 | 89.7% | 100% |
+| report.pdf (8 pages) | 12,176 | 153 | 98.7% | 100% |
+| scanned.pdf (2 pages, 1 scanned) | 3,018 | 48 | 98.4% | 100% |
 | page.html | 220 | 68 | 69.1% | 100% |
 | users.json (20 records) | 1,029 | 300 | 70.8% | 100% |
 
