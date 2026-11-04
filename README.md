@@ -87,6 +87,27 @@ What Muse Spark returned for the bar chart in the test deck (1,560 tokens as an 
 | 120 | 340 | 260 | 410 |
 ```
 
+## Doesn't Muse Spark cost tokens too?
+
+Yes. Squeeze records what every Muse Spark call used, from the API's own usage counts, and shows it in the web app, the CLI output and `manifest.json`. Live run on the demo files, Nov 4, 2026 ([run log](https://github.com/eshu3104/squeeze/actions/runs/41933623129)):
+
+| File | Tokens saved per use | Muse Spark, image step (paid once) | Image step pays for itself | Fact check (optional audit, paid once) |
+|---|---:|---:|---|---:|
+| Slide deck, 3 images sent | 4,253 | 5,948 | on the 2nd use | 5,286 |
+| PDF report, 2 images sent | 7,358 | 3,776 | on the 1st use | 6,403 |
+| Web page | 2,684 | 0 | immediately | 5,330 |
+| GitHub API JSON | 2,484 | 0 | immediately | 7,548 |
+
+Why it is still worth it:
+
+1. **Most of the saving costs no model tokens at all.** Extraction, footer removal, HTML cleanup and JSON pruning are plain code. The web page and the JSON made no image calls.
+2. **The image step is paid once; the saving repeats every time the text is sent.** Every follow-up question, every agent turn and every teammate reuses the compressed text, and answers are cached, so re-runs cost nothing. An agent that re-reads the deck for 20 turns spends 5,948 tokens once and saves 85,060, a net 79,112.
+3. **The fact check is an audit, not a step to run every time.** Use it to confirm that compression is safe for a kind of document, then leave it off.
+
+Where it does not pay: a file with many images that you send once and never again. For that case, `--images none` keeps every free saving and makes no model calls.
+
+Two caveats: Muse Spark's output counts include its reasoning (about 900 tokens per image call here), and output tokens usually cost more than input tokens, so compare against Meta's current pricing rather than counting tokens alone. "Tokens saved per use" is counted with `o200k_base` on the text your model receives; Muse Spark's counts come from its own tokenizer.
+
 ## Tests
 
 ```bash

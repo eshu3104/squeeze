@@ -210,7 +210,7 @@ function show(r) {
   $("usage").textContent = !u.calls ? "No model calls were needed for this file."
     : !u.complete ? `Muse Spark made ${u.calls} call${u.calls === 1 ? "" : "s"}; this backend did not report token counts.`
     : img.calls ? `Muse Spark used ${fmt(spent)} tokens on ${img.calls} image${img.calls === 1 ? "" : "s"}, paid once. ` +
-      (u.image_break_even_uses <= 1 ? "The saving covers that on the first use." : `The saving covers that after ${Math.ceil(u.image_break_even_uses)} uses.`)
+      (u.image_break_even_uses <= 1 ? "The saving covers that on the first use." : `The saving covers that by use ${Math.ceil(u.image_break_even_uses)}.`)
     : "";
   const p = $("passes"); p.innerHTML = "";
   for (const [k, v] of Object.entries(s.saved_by_pass)) {
