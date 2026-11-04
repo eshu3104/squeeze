@@ -118,6 +118,7 @@
     <div id="imgwrap" hidden>
       <h2 id="imgtitle"></h2>
       <div class="imgs" id="imgs"></div>
+      <p id="gone" class="lead"></p>
     </div>
 
     <h2>Compressed text</h2>
@@ -206,10 +207,15 @@ function show(r) {
   }
 
   const imgs = r.images || [];
+  const kept = imgs.filter(i => !["decorative", "dropped"].includes(i.class));
+  const gone = imgs.filter(i => ["decorative", "dropped"].includes(i.class));
   $("imgwrap").hidden = !imgs.length;
-  $("imgtitle").textContent = `${imgs.length} image${imgs.length === 1 ? "" : "s"}, judged by Muse Spark`;
+  $("imgtitle").textContent = `${imgs.length} image${imgs.length === 1 ? "" : "s"}: ${kept.length} turned into text, ${gone.length} dropped`;
   const g = $("imgs"); g.innerHTML = "";
-  for (const im of imgs) {
+  $("gone").textContent = gone.length
+    ? `Dropped ${gone.length} decorative image${gone.length === 1 ? "" : "s"} (logos, icons, backgrounds), saving ${fmt(gone.reduce((a, i) => a + i.tokens_as_image, 0))} tokens.`
+    : "";
+  for (const im of kept) {
     const d = document.createElement("div"); d.className = "img " + im.class;
     if (im.thumb) d.append(Object.assign(document.createElement("img"), { src: im.thumb, alt: "" }));
     d.append(Object.assign(document.createElement("div"), { className: "cls", textContent: `${CLASS_NAMES[im.class] || im.class} (${im.anchor})` }));
