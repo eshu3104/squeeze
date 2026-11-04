@@ -33,11 +33,18 @@ def _head(text: str) -> str:
     return ENC.decode(ENC.encode(text, disallowed_special=())[:MAX_TOKENS]).replace('"""', "'''")
 
 
+URL = re.compile(r"https?://\S+")
+
+
+def _numbers(text: str) -> set[str]:
+    return set(NUM.findall(URL.sub(" ", text)))  # digits inside links (tracking IDs) aren't content
+
+
 def numbers_kept(original: str, compressed: str) -> float | None:
-    nums = set(NUM.findall(original))
+    nums = _numbers(original)
     if not nums:
         return None
-    return round(len(nums & set(NUM.findall(compressed))) / len(nums), 3)  # whole numbers, not digits inside others
+    return round(len(nums & _numbers(compressed)) / len(nums), 3)  # whole numbers, not digits inside others
 
 
 def probe_qa(original: str, compressed: str, n: int = 8) -> dict:

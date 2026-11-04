@@ -5,6 +5,7 @@ def test_numbers_kept():
     assert fidelity.numbers_kept("grew 31% to 1,200 in 2026", "grew 31% to 1,200") == round(2 / 3, 3)
     assert fidelity.numbers_kept("no digits here", "x") is None
     assert fidelity.numbers_kept("page 7 shows 1,700 units", "1,700 units") == 0.5  # "7" inside 1,700 doesn't count
+    assert fidelity.numbers_kept("see https://x.com/a?fbclid=IwAR0 for 31%", "see https://x.com/a for 31%") == 1.0
 
 
 def test_probe_qa_scores_matches(monkeypatch):
