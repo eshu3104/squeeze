@@ -13,7 +13,6 @@ dependencies = [
     "pillow",
     "imagehash",
     "httpx",
-    "diskcache",
     "fastapi",
     "uvicorn",
     "python-multipart",

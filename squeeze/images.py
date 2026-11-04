@@ -45,7 +45,7 @@ def run(sections, where: str, keep: str = "describe") -> list[dict]:
     for s in sections:
         for img in s.images:
             entry = {"anchor": s.anchor, "tokens_as_image": image_tokens(img.width, img.height),
-                     "cached": False, "thumb": None}
+                     "cached": False, "called": False, "thumb": None}
             if keep == "none":
                 entry.update({"class": "dropped", "description": ""})
             elif min(img.width, img.height) < MIN_SIDE:
@@ -61,7 +61,8 @@ def run(sections, where: str, keep: str = "describe") -> list[dict]:
                         data, cached = muse.ask_json(PROMPT.format(where=where, context=s.text[:600]), png)
                         cls = data.get("class", "informative")
                         entry.update({"class": cls if cls in ("informative", "decorative", "text") else "informative",
-                                      "description": str(data.get("description", "")).strip(), "cached": cached})
+                                      "description": str(data.get("description", "")).strip(),
+                                      "cached": cached, "called": not cached})
                     except (muse.MuseError, OSError) as e:  # model down: say so in the output, never guess
                         entry.update({"class": "error", "description": "", "error": str(e)[:200]})
                     by_hash[h] = entry

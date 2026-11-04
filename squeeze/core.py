@@ -45,6 +45,7 @@ class Result:
     text: str
     stats: dict
     images: list[dict] = field(default_factory=list)  # one entry per image: class, description, tokens
+    fidelity: dict | None = None
 
 
 def render(sections: list[Section]) -> str:
@@ -57,21 +58,58 @@ def render(sections: list[Section]) -> str:
     return "\n\n".join(parts) + "\n"
 
 
-def extract(source: str) -> tuple[str, list[Section]]:
-    """Return (kind, sections). Kinds grow as extractors are added."""
+def extract(source: str) -> tuple[str, list[Section], int]:
+    """Return (kind, sections, tokens_before). kind names the input for prompts and the UI."""
+    from squeeze import extractors
+
+    if source.startswith(("http://", "https://")):
+        import httpx
+
+        try:
+            r = httpx.get(source, follow_redirects=True, timeout=30, headers={"User-Agent": "squeeze/0.1"})
+            r.raise_for_status()
+        except httpx.HTTPError as e:
+            raise ValueError(f"could not fetch {source}: {e}") from e
+        if "json" in r.headers.get("content-type", ""):
+            return "JSON response", *extractors.json_doc(r.text)
+        return "web page", *extractors.html(r.text)
+
     path = Path(source)
-    if path.suffix.lower() in {".txt", ".md"}:
-        return "text", [Section("", path.read_text(encoding="utf-8", errors="replace"))]
-    raise ValueError(f"unsupported input: {source}")
+    suffix = path.suffix.lower()
+    if suffix == ".pptx":
+        return "slide deck", *extractors.pptx(source)
+    if suffix == ".pdf":
+        return "PDF", *extractors.pdf(source)
+    if suffix in (".html", ".htm"):
+        return "web page", *extractors.html(path.read_text(encoding="utf-8", errors="replace"))
+    if suffix == ".json":
+        try:
+            return "JSON document", *extractors.json_doc(path.read_text(encoding="utf-8"))
+        except ValueError as e:
+            raise ValueError(f"not valid JSON: {e}") from e
+    if suffix in (".txt", ".md"):
+        raw = path.read_text(encoding="utf-8", errors="replace")
+        return "text file", [Section("", raw)], count_tokens(raw)
+    raise ValueError(f"unsupported input type {suffix or source!r}: use .pptx, .pdf, .html, .json, .txt, .md or a URL")
 
 
-def compress(source: str) -> Result:
-    kind, sections = extract(source)
-    text_before = count_tokens(render(sections))
-    img_before = sum(image_tokens(i.width, i.height) for s in sections for i in s.images)
+def compress(source: str, images: str = "describe", fidelity: bool = False) -> Result:
+    """images: describe | all | none (see images.run). fidelity: also run Muse Spark probe QA."""
+    from squeeze import fidelity as check
+    from squeeze import images as image_pass
+
+    kind, sections, before = extract(source)
+    original = render(sections)  # extracted text, before any pass: the reference for fidelity
 
     by_pass = {}
-    current = text_before
+    current = count_tokens(original)
+    by_pass["extract"] = before - current
+
+    report = image_pass.run(sections, kind, keep=images)
+    after = count_tokens(render(sections))
+    by_pass["images"] = current - after  # negative: descriptions add text back
+    current = after
+
     for name, fn in passes.TEXT_PASSES:
         sections = fn(sections)
         after = count_tokens(render(sections))
@@ -80,7 +118,12 @@ def compress(source: str) -> Result:
 
     text = render(sections)
     after = count_tokens(text)
-    before = text_before + img_before
+    fid = {"numbers_kept": check.numbers_kept(original, text)}
+    if fidelity:
+        try:
+            fid["probe_qa"] = check.probe_qa(original, text)
+        except Exception as e:  # a failed check must not lose the compression result
+            fid["error"] = str(e)[:200]
     stats = {
         "source": str(source),
         "kind": kind,
@@ -88,5 +131,6 @@ def compress(source: str) -> Result:
         "tokens_after": after,
         "saved_pct": round(100 * (before - after) / before, 1) if before else 0.0,
         "saved_by_pass": by_pass,
+        "image_model_calls": sum(r["called"] for r in report),
     }
-    return Result(text=text, stats=stats)
+    return Result(text=text, stats=stats, images=report, fidelity=fid)
