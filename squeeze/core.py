@@ -51,8 +51,8 @@ class Result:
 def render(sections: list[Section]) -> str:
     parts = []
     for s in sections:
-        body = s.text.strip()
-        if not body:
+        body = s.text.strip("\n")  # not strip(): a first line's indentation can be code
+        if not body.strip():
             continue
         parts.append(f"[{s.anchor}]\n{body}" if s.anchor else body)
     return "\n\n".join(parts) + "\n"
@@ -105,16 +105,15 @@ def compress(source: str, images: str = "describe", fidelity: bool = False) -> R
     current = count_tokens(original)
     by_pass["extract"] = before - current
 
-    report = image_pass.run(sections, kind, keep=images)
-    after = count_tokens(render(sections))
-    by_pass["images"] = current - after  # negative: descriptions add text back
-    current = after
-
-    for name, fn in passes.TEXT_PASSES:
+    for name, fn in passes.TEXT_PASSES:  # before images, so model-written text is never edited
         sections = fn(sections)
         after = count_tokens(render(sections))
         by_pass[name] = current - after
         current = after
+
+    report = image_pass.run(sections, kind, keep=images)
+    after = count_tokens(render(sections))
+    by_pass["images"] = current - after  # negative: descriptions add text back
 
     text = render(sections)
     after = count_tokens(text)

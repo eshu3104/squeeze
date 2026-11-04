@@ -1,20 +1,20 @@
 """Deterministic text passes. No model calls; each takes and returns the section list."""
 import re
 from collections import Counter
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 TRACKING = re.compile(r"^(utm_\w+|fbclid|gclid|dclid|msclkid|mc_cid|mc_eid|igshid|yclid|_hsenc|_hsmi|ref_src)$", re.I)
 URL = re.compile(r"https?://[^\s)\]>\"']+")
 DATA_URI = re.compile(r"data:[\w/+.-]+;base64,[A-Za-z0-9+/=]+")
-BASE64_RUN = re.compile(r"\b[A-Za-z0-9+/]{120,}={0,2}")
+# Mixed case and a digit, not inside a word or URL: real base64, not hashes, DNA or space-less PDF text.
+BASE64_RUN = re.compile(r"(?<![\w.:/-])(?=[A-Za-z0-9+/]*[a-z])(?=[A-Za-z0-9+/]*[A-Z])(?=[A-Za-z0-9+/]*\d)[A-Za-z0-9+/]{120,}={0,2}")
 ID = re.compile(r"\b(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9a-f]{32,64})\b", re.I)
 
 
 def whitespace(sections):
     for s in sections:
         lines = [ln.rstrip() for ln in s.text.replace("\r\n", "\n").split("\n")]
-        s.text = re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
-        s.text = re.sub(r"(?<=\S)[ \t]{2,}", " ", s.text)  # keep leading indentation: it is meaning in code
+        # Only trailing spaces and blank runs: spacing inside a line can be columns or code.
+        s.text = re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip("\n")
     return sections
 
 
@@ -26,9 +26,11 @@ def blobs(sections):
 
 
 def _clean_url(m):
-    parts = urlsplit(m.group(0))
-    query = [(k, v) for k, v in parse_qsl(parts.query, keep_blank_values=True) if not TRACKING.match(k)]
-    return urlunsplit(parts._replace(query=urlencode(query)))
+    # Plain string surgery: decoding and re-encoding would change (and lengthen) URLs with no tracking at all.
+    url, hash_, frag = m.group(0).partition("#")
+    base, _, query = url.partition("?")
+    kept = [p for p in query.split("&") if p and not TRACKING.match(p.split("=", 1)[0])]
+    return base + ("?" + "&".join(kept) if kept else "") + hash_ + frag
 
 
 def tracking_urls(sections):
@@ -50,23 +52,33 @@ def alias_ids(sections):
     return sections
 
 
-def repeated_lines(sections, min_sections=3):
-    """A line on 3+ sections (footers, slide template text) is kept on its first section only."""
-    if len(sections) < min_sections:
+def _plain(ln):
+    """Not a table row or code: those repeat legitimately and must stay."""
+    return len(ln.strip()) >= 4 and not ln.startswith((" ", "\t", "|", "`"))
+
+
+def _edges(text):
+    lines = [ln for ln in text.split("\n") if ln.strip()]
+    return {ln.strip() for ln in (lines[:1] + lines[-1:]) if _plain(ln)}
+
+
+def repeated_lines(sections):
+    """A line that opens or closes 3+ sections is a header or footer: kept once, marked, where it first appears."""
+    if len(sections) < 3:
         return sections
-    seen_in = Counter()
-    for s in sections:
-        seen_in.update({ln.strip() for ln in s.text.split("\n") if len(ln.strip()) >= 4})
-    boiler = {ln for ln, n in seen_in.items() if n >= min_sections}
+    seen_in = Counter(ln for s in sections for ln in _edges(s.text))
+    lines_of = [{ln.strip() for ln in s.text.split("\n")} for s in sections]
+    boiler = {ln: sum(ln in ls for ls in lines_of) for ln, n in seen_in.items() if n >= 3}
     kept = set()
     for s in sections:
         out = []
         for ln in s.text.split("\n"):
             key = ln.strip()
-            if key in boiler:
+            if key in boiler and _plain(ln):
                 if key in kept:
                     continue
                 kept.add(key)
+                ln = f"{ln} [repeated {boiler[key]}x]"
             out.append(ln)
         s.text = "\n".join(out)
     return sections
