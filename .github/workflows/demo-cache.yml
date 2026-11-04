@@ -24,8 +24,12 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -e .
+      - name: One real call
+        run: python scripts/check_api.py
       - name: Squeeze the demo files with Muse Spark
         run: squeeze demo/* --fidelity --out out
+      - name: Show any model errors
+        run: grep -h '"error"' out/*.manifest.json || echo "no model errors"
       - name: Print cached answers
         run: |
           python - <<'EOF'
