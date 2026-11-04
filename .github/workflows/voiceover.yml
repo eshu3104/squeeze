@@ -1,0 +1,46 @@
+name: Voiceover
+
+# Manual only: speaks the demo video's narration with Kokoro (open weights, Apache-2.0)
+# and prints each line's MP3 as base64 chunks in the log.
+on:
+  workflow_dispatch:
+    inputs:
+      lines:
+        description: JSON list of narration lines
+        required: true
+      voice:
+        description: Kokoro voice
+        default: af_heart
+
+permissions:
+  contents: read
+
+jobs:
+  tts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq espeak-ng ffmpeg
+      - run: pip install -q torch --index-url https://download.pytorch.org/whl/cpu && pip install -q kokoro soundfile
+      - name: Speak
+        env:
+          LINES: ${{ inputs.lines }}
+          VOICE: ${{ inputs.voice }}
+        run: |
+          python - <<'EOF'
+          import base64, json, os, subprocess
+          import numpy as np, soundfile as sf
+          from kokoro import KPipeline
+          pipe = KPipeline(lang_code="a")
+          for i, text in enumerate(json.loads(os.environ["LINES"])):
+              audio = np.concatenate([a for _, _, a in pipe(text, voice=os.environ["VOICE"], speed=1.0)])
+              sf.write(f"vo{i}.wav", audio, 24000)
+              subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", f"vo{i}.wav", "-b:a", "128k", f"vo{i}.mp3"], check=True)
+              data = base64.b64encode(open(f"vo{i}.mp3", "rb").read()).decode()
+              for k in range(0, len(data), 3000):
+                  print(f"VO {i} {k // 3000} {data[k:k + 3000]}")
+              print(f"VODONE {i} {len(audio) / 24000:.2f}")
+          EOF
