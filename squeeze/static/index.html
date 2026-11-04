@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Squeeze</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;700&family=Barlow:wght@400;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #eef2f5; --ink: #1b2a38; --muted: #5b6b7a; --line: #cfd8e0;
+    --before: #b9c6d2; --after: #2f5bea; --bad: #b4532a; --panel: #ffffff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #121a22; --ink: #e3eaf0; --muted: #93a3b2; --line: #2a3744;
+            --before: #3a4a59; --after: #6f8ff5; --bad: #e08a62; --panel: #18222c; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 17px/1.55 Barlow, system-ui, sans-serif; }
+  main { max-width: 880px; margin: 0 auto; padding: 40px 16px 80px; }
+  h1 { font: 700 64px/1 "Barlow Condensed", sans-serif; letter-spacing: -0.5px; margin: 0; }
+  h2 { font: 700 26px/1.2 "Barlow Condensed", sans-serif; margin: 48px 0 12px; }
+  .lead { color: var(--muted); max-width: 60ch; margin: 8px 0 32px; }
+  form { display: grid; gap: 12px; }
+  #drop { border: 2px dashed var(--line); border-radius: 12px; padding: 32px; text-align: center;
+          background: var(--panel); cursor: pointer; }
+  #drop.over { border-color: var(--after); }
+  #drop strong { display: block; font-size: 19px; }
+  #drop span { color: var(--muted); }
+  .row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+  input[type=url], select { font: inherit; color: var(--ink); background: var(--panel);
+          border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+  input[type=url] { flex: 1 1 280px; }
+  button { font: 600 17px Barlow, sans-serif; border: 0; border-radius: 8px; padding: 11px 20px;
+           background: var(--after); color: #fff; cursor: pointer; }
+  button.quiet { background: transparent; color: var(--after); border: 1px solid var(--line); padding: 7px 14px; font-size: 15px; }
+  button:disabled { opacity: .5; cursor: wait; }
+  :focus-visible { outline: 3px solid var(--after); outline-offset: 2px; }
+  #status { color: var(--muted); min-height: 1.5em; }
+  #status.err { color: var(--bad); }
+
+  /* The meter: both strips drawn to the same scale, so the squeeze is the picture. */
+  .meter { margin-top: 32px; }
+  .strip { height: 44px; border-radius: 6px; margin: 6px 0 2px; transform-origin: left;
+           transition: transform .9s cubic-bezier(.2,.7,.2,1); }
+  .strip.before { background: var(--before); }
+  .strip.after { background: var(--after); transform: scaleX(1); }
+  .num { font: 700 30px/1.1 "Barlow Condensed", sans-serif; }
+  .num small { font: 400 16px Barlow, sans-serif; color: var(--muted); margin-left: 6px; }
+  .saved { font: 700 96px/1 "Barlow Condensed", sans-serif; margin: 24px 0 0; }
+  .saved small { font: 400 18px Barlow, sans-serif; color: var(--muted); display: block; margin-top: 4px; }
+  @media (prefers-reduced-motion: reduce) { .strip { transition: none; } }
+
+  table { border-collapse: collapse; width: 100%; }
+  td { padding: 8px 0; border-bottom: 1px solid var(--line); }
+  td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+  .imgs { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 16px; }
+  .img { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
+  .img img { width: 100%; border-radius: 6px; display: block; background: var(--bg); }
+  .img .cls { font-weight: 600; margin-top: 8px; }
+  .img.decorative, .img.dropped { opacity: .65; }
+  .img.error .cls { color: var(--bad); }
+  .img p { margin: 4px 0 0; font-size: 15px; white-space: pre-wrap; }
+  .img .t { color: var(--muted); font-size: 14px; margin-top: 6px; }
+  pre { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px;
+        white-space: pre-wrap; word-break: break-word; max-height: 480px; overflow: auto; font-size: 14px; }
+  .ok { color: var(--after); } .no { color: var(--bad); }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Squeeze</h1>
+  <p class="lead">Shrink decks, PDFs, web pages and JSON into compact text an LLM can read.
+    Meta's Muse Spark looks at every image and keeps only what carries information.</p>
+
+  <form id="f">
+    <label id="drop" tabindex="0">
+      <strong>Drop a file here, or click to choose one</strong>
+      <span>.pptx, .pdf, .html, .json, .txt or .md</span>
+      <input id="file" name="file" type="file" accept=".pptx,.pdf,.html,.htm,.json,.txt,.md" hidden>
+    </label>
+    <div class="row">
+      <input id="url" name="url" type="url" placeholder="Or paste a web page URL">
+    </div>
+    <div class="row">
+      <label>Images
+        <select name="images">
+          <option value="describe">Describe the useful ones, drop the rest</option>
+          <option value="all">Describe every image</option>
+          <option value="none">Drop all images</option>
+        </select>
+      </label>
+      <label><input type="checkbox" name="fidelity" value="1"> Check that facts survived</label>
+      <button id="go" type="submit">Squeeze it</button>
+    </div>
+    <div id="status" role="status"></div>
+  </form>
+
+  <section id="out" hidden>
+    <div class="meter">
+      <div class="num" id="bnum"></div>
+      <div class="strip before"></div>
+      <div class="num" id="anum"></div>
+      <div class="strip after" id="astrip"></div>
+      <p class="saved" id="saved"></p>
+    </div>
+
+    <div id="fid" hidden>
+      <h2 id="fidtitle"></h2>
+      <table id="fidrows"></table>
+    </div>
+
+    <h2>Where the tokens went</h2>
+    <table id="passes"></table>
+
+    <div id="imgwrap" hidden>
+      <h2 id="imgtitle"></h2>
+      <div class="imgs" id="imgs"></div>
+    </div>
+
+    <h2>Compressed text</h2>
+    <div class="row">
+      <button class="quiet" type="button" id="copy">Copy text</button>
+      <button class="quiet" type="button" id="dl">Download .md</button>
+      <button class="quiet" type="button" id="dlm">Download manifest.json</button>
+    </div>
+    <pre id="text"></pre>
+  </section>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const fmt = n => n.toLocaleString("en-US");
+const PASS_NAMES = {
+  extract: "Markup, layout and raw images removed",
+  images: "Image descriptions added",
+  blobs: "Inline data and base64 removed",
+  tracking_urls: "Tracking parameters stripped",
+  alias_ids: "Repeated IDs shortened",
+  repeated_lines: "Repeated footers and template text",
+  whitespace: "Extra whitespace",
+};
+const CLASS_NAMES = {
+  informative: "Described", text: "Transcribed", decorative: "Dropped as decorative",
+  dropped: "Dropped", error: "Model unavailable",
+};
+let last = null;
+
+const drop = $("drop"), file = $("file");
+drop.addEventListener("click", () => file.click());
+drop.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); file.click(); } });
+file.addEventListener("change", () => { if (file.files[0]) drop.querySelector("strong").textContent = file.files[0].name; });
+["dragover", "dragenter"].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add("over"); }));
+["dragleave", "drop"].forEach(t => drop.addEventListener(t, () => drop.classList.remove("over")));
+drop.addEventListener("drop", e => {
+  e.preventDefault();
+  if (e.dataTransfer.files[0]) { file.files = e.dataTransfer.files; file.dispatchEvent(new Event("change")); }
+});
+
+$("f").addEventListener("submit", async e => {
+  e.preventDefault();
+  const fd = new FormData($("f"));
+  if (!file.files[0]) fd.delete("file");
+  if (!file.files[0] && !$("url").value) { status("Choose a file or paste a URL first.", true); return; }
+  $("go").disabled = true;
+  status(fd.get("fidelity") ? "Squeezing, then checking facts with Muse Spark..." : "Squeezing...");
+  try {
+    const r = await fetch("/compress", { method: "POST", body: fd });
+    const body = await r.json();
+    if (!r.ok) throw new Error(body.detail || r.statusText);
+    last = body; show(body); status("");
+  } catch (err) {
+    status("Couldn't squeeze that: " + err.message, true);
+  } finally { $("go").disabled = false; }
+});
+
+function status(msg, err) { $("status").textContent = msg; $("status").className = err ? "err" : ""; }
+
+function row(table, a, b, cls) {
+  const tr = table.insertRow();
+  tr.insertCell().textContent = a;
+  const c = tr.insertCell(); c.textContent = b; if (cls) c.className = cls;
+}
+
+function show(r) {
+  const s = r.stats;
+  $("out").hidden = false;
+  $("bnum").innerHTML = ""; $("anum").innerHTML = "";
+  $("bnum").append(fmt(s.tokens_before), Object.assign(document.createElement("small"), { textContent: "tokens as sent today" }));
+  $("anum").append(fmt(s.tokens_after), Object.assign(document.createElement("small"), { textContent: "tokens after Squeeze" }));
+  const ratio = s.tokens_before ? s.tokens_after / s.tokens_before : 1;
+  const strip = $("astrip");
+  strip.style.transition = "none"; strip.style.transform = "scaleX(1)";
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    strip.style.transition = ""; strip.style.transform = `scaleX(${Math.max(ratio, 0.005)})`;
+  }));
+  $("saved").innerHTML = "";
+  $("saved").append(`${s.saved_pct}% smaller`,
+    Object.assign(document.createElement("small"), { textContent: `${fmt(s.tokens_before - s.tokens_after)} tokens saved on ${s.source}` }));
+
+  const p = $("passes"); p.innerHTML = "";
+  for (const [k, v] of Object.entries(s.saved_by_pass)) {
+    if (!v) continue;
+    row(p, PASS_NAMES[k] || k, (v > 0 ? "−" : "+") + fmt(Math.abs(v)), v > 0 ? "" : "no");
+  }
+
+  const imgs = r.images || [];
+  $("imgwrap").hidden = !imgs.length;
+  $("imgtitle").textContent = `${imgs.length} image${imgs.length === 1 ? "" : "s"}, judged by Muse Spark`;
+  const g = $("imgs"); g.innerHTML = "";
+  for (const im of imgs) {
+    const d = document.createElement("div"); d.className = "img " + im.class;
+    if (im.thumb) d.append(Object.assign(document.createElement("img"), { src: im.thumb, alt: "" }));
+    d.append(Object.assign(document.createElement("div"), { className: "cls", textContent: `${CLASS_NAMES[im.class] || im.class} (${im.anchor})` }));
+    if (im.description) d.append(Object.assign(document.createElement("p"), { textContent: im.description }));
+    d.append(Object.assign(document.createElement("div"), { className: "t",
+      textContent: `${fmt(im.tokens_as_image)} tokens as an image, ${fmt(im.tokens_as_text)} as text${im.cached ? ", from cache" : ""}` }));
+    g.append(d);
+  }
+
+  const f = r.fidelity;
+  $("fid").hidden = !f;
+  if (f) {
+    const t = $("fidrows"); t.innerHTML = "";
+    const parts = [];
+    if (f.probe_qa) parts.push(`${Math.round(f.probe_qa.score * 100)}% of facts survived`);
+    if (f.numbers_kept != null) parts.push(`${Math.round(f.numbers_kept * 100)}% of numbers kept`);
+    $("fidtitle").textContent = parts.join(", ") || "Fact check";
+    if (f.error) row(t, "Fact check didn't run", f.error, "no");
+    for (const c of (f.probe_qa ? f.probe_qa.checks : [])) row(t, c.q, `${c.got}${c.ok ? "" : " (expected " + c.expected + ")"}`, c.ok ? "ok" : "no");
+  }
+  $("text").textContent = r.text;
+}
+
+function save(name, data, type) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([data], { type }));
+  a.download = name; a.click(); URL.revokeObjectURL(a.href);
+}
+$("copy").addEventListener("click", async () => { await navigator.clipboard.writeText(last.text); status("Copied."); });
+$("dl").addEventListener("click", () => save("squeezed.md", last.text, "text/markdown"));
+$("dlm").addEventListener("click", () => {
+  const { text, ...manifest } = last;
+  manifest.images = (manifest.images || []).map(({ thumb, ...rest }) => rest);
+  save("manifest.json", JSON.stringify(manifest, null, 2), "application/json");
+});
+</script>
+</body>
+</html>
