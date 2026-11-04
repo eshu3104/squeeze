@@ -1,5 +1,7 @@
 # Squeeze
 
+**Demo video (2:21):** https://youtu.be/EXrJVzd783o
+
 Squeeze turns token-heavy inputs (slide decks, PDFs, web pages, JSON tool output) into compact, LLM-ready Markdown, and reports exactly how many tokens it saved.
 
 Meta's **Muse Spark** reads every image of 64 px or more (up to 40 per file) and decides what it is worth: logos and stock photos are dropped, charts become data tables, diagrams and screenshots become short factual descriptions. A fact check, also run by Muse Spark, asks questions of the original text and answers them from the compressed text, so the saving comes with evidence that the text steps kept the facts.
