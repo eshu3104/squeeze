@@ -73,7 +73,7 @@
 <main>
   <h1>Squeeze</h1>
   <p class="lead">Shrink decks, PDFs, web pages and JSON into compact text an LLM can read.
-    Meta's Muse Spark looks at every image and keeps only what carries information.</p>
+    Meta's Muse Spark looks at every image big enough to matter and keeps only what carries information.</p>
 
   <form id="f">
     <label id="drop" tabindex="0">
@@ -87,8 +87,7 @@
     <div class="row">
       <label>Images
         <select name="images">
-          <option value="describe">Describe the useful ones, drop the rest</option>
-          <option value="all">Describe every image</option>
+          <option value="describe">Let Muse Spark judge them</option>
           <option value="none">Drop all images</option>
         </select>
       </label>
@@ -142,9 +141,14 @@ const PASS_NAMES = {
   repeated_lines: "Repeated footers and template text",
   whitespace: "Extra whitespace",
 };
-const CLASS_NAMES = {
-  informative: "Described", text: "Transcribed", decorative: "Dropped as decorative",
-  dropped: "Dropped", error: "Model unavailable",
+const CLASS_NAMES = { informative: "Described", text: "Transcribed", error: "Model call failed" };
+// Every way an image leaves the output, in the words the page uses for it.
+const GONE = {
+  decorative: "judged decorative by Muse Spark",
+  tiny: "skipped without a model call (under 64 px)",
+  dropped: "dropped by your setting",
+  limit: "skipped after the 40-call limit for one file",
+  unreadable: "skipped: a format that can't be read",
 };
 let last = null;
 
@@ -207,21 +211,22 @@ function show(r) {
   }
 
   const imgs = r.images || [];
-  const kept = imgs.filter(i => !["decorative", "dropped"].includes(i.class));
-  const gone = imgs.filter(i => ["decorative", "dropped"].includes(i.class));
+  const kept = imgs.filter(i => !(i.class in GONE));
+  const seen = imgs.filter(i => i.called || i.cached).length;
   $("imgwrap").hidden = !imgs.length;
-  $("imgtitle").textContent = `${imgs.length} image${imgs.length === 1 ? "" : "s"}: ${kept.length} turned into text, ${gone.length} dropped`;
+  $("imgtitle").textContent = `${imgs.length} image${imgs.length === 1 ? "" : "s"}, ${seen} seen by Muse Spark`;
   const g = $("imgs"); g.innerHTML = "";
-  $("gone").textContent = gone.length
-    ? `Dropped ${gone.length} decorative image${gone.length === 1 ? "" : "s"} (logos, icons, backgrounds), saving ${fmt(gone.reduce((a, i) => a + i.tokens_as_image, 0))} tokens.`
-    : "";
+  const counts = {};
+  imgs.forEach(i => { if (i.class in GONE) counts[i.class] = (counts[i.class] || 0) + 1; });
+  $("gone").textContent = Object.entries(counts).map(([c, n]) => `${n} ${GONE[c]}`).join(". ") + (Object.keys(counts).length ? "." : "");
   for (const im of kept) {
     const d = document.createElement("div"); d.className = "img " + im.class;
     if (im.thumb) d.append(Object.assign(document.createElement("img"), { src: im.thumb, alt: "" }));
-    d.append(Object.assign(document.createElement("div"), { className: "cls", textContent: `${CLASS_NAMES[im.class] || im.class} (${im.anchor})` }));
-    if (im.description) d.append(Object.assign(document.createElement("p"), { textContent: im.description }));
+    const label = im.same_as ? `Same image as ${im.same_as}` : CLASS_NAMES[im.class] || im.class;
+    d.append(Object.assign(document.createElement("div"), { className: "cls", textContent: `${label} (${im.anchor})` }));
+    if (im.description && !im.same_as) d.append(Object.assign(document.createElement("p"), { textContent: im.description }));
     d.append(Object.assign(document.createElement("div"), { className: "t",
-      textContent: `${fmt(im.tokens_as_image)} tokens as an image, ${fmt(im.tokens_as_text)} as text${im.cached ? ", from cache" : ""}` }));
+      textContent: `${fmt(im.tokens_as_image)} tokens as an image, ${fmt(im.tokens_as_text)} as text${im.cached && !im.same_as ? ", from cache" : ""}` }));
     g.append(d);
   }
 

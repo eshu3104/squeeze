@@ -20,8 +20,8 @@ def index():
 @app.post("/compress")
 def compress_endpoint(file: UploadFile | None = File(None), url: str = Form(""),
                       images: str = Form("describe"), fidelity: str = Form("")):
-    if images not in ("describe", "all", "none"):
-        raise HTTPException(400, "images must be describe, all or none")
+    if images not in ("describe", "none"):
+        raise HTTPException(400, "images must be describe or none")
     with tempfile.TemporaryDirectory() as tmp:
         if file and file.filename:
             source = str(Path(tmp) / Path(file.filename).name)

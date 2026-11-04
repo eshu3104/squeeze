@@ -34,7 +34,7 @@ def test_deck_drops_logos_keeps_chart_and_footer_once(tmp_path):
     fx.make_pptx(f)
     r = compress(str(f))
     classes = [i["class"] for i in r.images]
-    assert classes.count("decorative") == 4 and classes.count("informative") == 2
+    assert classes.count("tiny") == 4 and classes.count("informative") == 2
     assert r.text.count("Northwind Labs | Internal use only") == 1
     assert r.stats["image_model_calls"] == 1  # logos are tiny: never sent; the repeated chart is sent once
     assert r.stats["saved_by_pass"]["images"] > 1000  # image savings credited to the image step
@@ -55,6 +55,8 @@ def test_api_rejects_bad_input(tmp_path):
     assert c.post("/compress", data={"url": "ftp://x"}).status_code == 400
     assert c.post("/compress", files={"file": ("a.exe", b"MZ")}).status_code == 400
     assert c.post("/compress", files={"file": ("a.json", b"{nope")}).status_code == 400
+    assert c.post("/compress", files={"file": ("a.pptx", b"not a zip")}).status_code == 400
+    assert c.post("/compress", data={"url": "https://x.org", "images": "all"}).status_code == 400
     assert c.get("/").status_code == 200
 
 
@@ -62,8 +64,8 @@ def test_cli_writes_markdown_and_manifest(tmp_path, capsys):
     f = tmp_path / "deck.pptx"
     fx.make_pptx(f)
     main([str(f), "--out", str(tmp_path / "out")])
-    assert (tmp_path / "out" / "deck.md").read_text().startswith("[slide 1]")
-    manifest = json.loads((tmp_path / "out" / "deck.manifest.json").read_text())
+    assert (tmp_path / "out" / "deck.pptx.md").read_text().startswith("[slide 1]")
+    manifest = json.loads((tmp_path / "out" / "deck.pptx.manifest.json").read_text())
     assert "thumb" not in manifest["images"][0]
     assert "% smaller" in capsys.readouterr().out
 

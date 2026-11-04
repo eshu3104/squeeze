@@ -109,7 +109,7 @@ def _guard(fn, arg):
 
 
 def compress(source: str, images: str = "describe", fidelity: bool = False) -> Result:
-    """images: describe | all | none (see images.run). fidelity: also run Muse Spark probe QA."""
+    """images: describe | none (see images.run). fidelity: also run Muse Spark probe QA."""
     from squeeze import fidelity as check
     from squeeze import images as image_pass
 

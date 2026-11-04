@@ -39,16 +39,22 @@ def backend() -> str:
     return os.environ.get("SQUEEZE_BACKEND", "meta-api")
 
 
-def _config():
+def _settings():
+    """(env prefix, base URL, model) for the current backend; the key is read separately."""
     if backend() == "openai-compat":
-        prefix, default_url, default_model = "OPENAI_COMPAT", None, "meta-models/muse-spark-open-1026"
+        prefix, url, model = "OPENAI_COMPAT", None, "meta-models/muse-spark-open-1026"
     else:
-        prefix, default_url, default_model = "META", "https://api.meta.ai/v1", "muse-spark-1.3"
-    url = os.environ.get(f"{prefix}_BASE_URL") or default_url
+        prefix, url, model = "META", "https://api.meta.ai/v1", "muse-spark-1.3"
+    return prefix, os.environ.get(f"{prefix}_BASE_URL") or url, os.environ.get(f"{prefix}_MODEL", model)
+
+
+def _config():
+    prefix, url, model = _settings()
     key = os.environ.get(f"{prefix}_API_KEY")
     if not url or not key:
-        raise MuseError(f"set {prefix}_API_KEY" + ("" if default_url else f" and {prefix}_BASE_URL") + " in .env (see .env.example)")
-    return url.rstrip("/"), key, os.environ.get(f"{prefix}_MODEL", default_model)
+        hint = f"set {prefix}_API_KEY" + ("" if prefix == "META" else f" and {prefix}_BASE_URL")
+        raise MuseError(hint + " in .env (see .env.example)")
+    return url.rstrip("/"), key, model
 
 
 def _request(prompt: str, image: bytes | None) -> str:
@@ -56,19 +62,23 @@ def _request(prompt: str, image: bytes | None) -> str:
     content = [{"type": "text", "text": prompt}]
     if image:
         b64 = base64.b64encode(image).decode()
-        content.append({"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}})
+        content.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}})
     try:
         r = httpx.post(f"{url}/chat/completions", timeout=60,
                        headers={"Authorization": f"Bearer {key}"},
                        json={"model": model, "temperature": 0, "messages": [{"role": "user", "content": content}]})
     except httpx.HTTPError as e:
         raise MuseError(f"could not reach {backend()}: {type(e).__name__}") from e
+    body = r.text[:200].replace(key, "***")  # some servers echo the key back in error text
     if r.status_code != 200:
-        raise MuseError(f"{backend()} returned {r.status_code}: {r.text[:200]}")
+        raise MuseError(f"{backend()} returned {r.status_code}: {body}")
     try:
-        return r.json()["choices"][0]["message"]["content"]
+        text = r.json()["choices"][0]["message"]["content"]
     except (ValueError, KeyError, IndexError, TypeError) as e:
-        raise MuseError(f"unexpected reply shape from {backend()}: {r.text[:200]}") from e
+        raise MuseError(f"unexpected reply shape from {backend()}: {body}") from e
+    if not isinstance(text, str):  # null on a refusal or an exhausted reasoning budget
+        raise MuseError(f"no text in reply from {backend()}")
+    return text
 
 
 def _mock(prompt: str, image: bytes | None) -> str:
@@ -85,11 +95,12 @@ def _mock(prompt: str, image: bytes | None) -> str:
 
 
 def ask_json(prompt: str, image: bytes | None = None) -> tuple[dict, bool]:
-    """Send prompt (+ optional PNG) and parse the JSON object in the reply.
-    Returns (data, from_cache). Results are cached on disk by content hash, so
-    re-runs and the demo cost nothing extra."""
+    """Send prompt (+ optional JPEG) and parse the JSON object in the reply.
+    Returns (data, from_cache). Results are cached on disk by backend, model and
+    content, so re-runs and the demo cost nothing extra."""
     name = backend()
-    key = hashlib.sha256(name.encode() + prompt.encode() + (image or b"")).hexdigest()
+    model = _settings()[2]
+    key = hashlib.sha256(f"{name}\0{model}\0{prompt}".encode() + (image or b"")).hexdigest()
     path = CACHE / f"{key}.json"
     if path.exists():
         return json.loads(path.read_text()), True
@@ -101,6 +112,10 @@ def ask_json(prompt: str, image: bytes | None = None) -> tuple[dict, bool]:
         data = json.loads(m.group(0))
     except json.JSONDecodeError as e:
         raise MuseError(f"bad JSON in reply: {e}") from e
+    if not isinstance(data, dict):
+        raise MuseError("reply JSON is not an object")
     CACHE.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data))
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(data))
+    os.replace(tmp, path)  # a run killed mid-write never leaves a broken cache file
     return data, False

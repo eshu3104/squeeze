@@ -34,6 +34,8 @@ def main():
         rows = []
         for f in build(Path(tmp)):
             r = compress(str(f), fidelity=fidelity)
+            if any(i["class"] == "error" for i in r.images) or "error" in (r.fidelity or {}):
+                sys.exit(f"{f.name}: model calls failed; not printing results from a broken run")
             s, fid = r.stats, r.fidelity or {}
             qa = fid.get("probe_qa", {}).get("score")
             rows.append((f.name, s["tokens_before"], s["tokens_after"], s["saved_pct"],
