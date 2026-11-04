@@ -66,6 +66,8 @@ def run(sections, where: str, keep: str = "describe") -> list[dict]:
                              **{k: first[k] for k in ("class", "description")})
                 if entry["class"] in ("informative", "text"):
                     line = f"[image: same as {first['anchor']}]"
+                elif entry["class"] == "error":
+                    line = "[image omitted: model unavailable]"
             else:
                 try:
                     data, entry["thumb"] = _jpeg(img)

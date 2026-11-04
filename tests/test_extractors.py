@@ -71,3 +71,19 @@ def test_html_honours_declared_charset():
     page = '<html><head><meta charset="iso-8859-1"></head><body><article><p>Herr Müller zahlte 5 Euro für 31 Tests im Labor heute.</p><p>Noch ein Satz über Messungen und Ergebnisse.</p></article></body></html>'
     md = extractors.html(page.encode("latin-1"))[0][0].text
     assert "Müller" in md
+
+
+def test_unreadable_chart_type_does_not_reject_deck(tmp_path):
+    import zipfile
+
+    src, dst = tmp_path / "a.pptx", tmp_path / "b.pptx"
+    fx.make_pptx(src)
+    with zipfile.ZipFile(src) as zin, zipfile.ZipFile(dst, "w") as zout:
+        for item in zin.infolist():  # turn the native chart into a 3D chart, which python-pptx can't read
+            data = zin.read(item)
+            if item.filename.startswith("ppt/charts/chart"):
+                data = data.replace(b"c:barChart>", b"c:bar3DChart>")
+            zout.writestr(item, data)
+    sections, _ = extractors.pptx(str(dst))
+    assert "[chart: type not readable]" in sections[2].text
+    assert "Revenue grew 13% in region 3." in sections[2].text

@@ -12,6 +12,9 @@ jobs:
   check:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash  # bash -eo pipefail: a failed script fails the step even when piped into tee
     env:
       SQUEEZE_BACKEND: meta-api
       META_API_KEY: ${{ secrets.META_API_KEY }}

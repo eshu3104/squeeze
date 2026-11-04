@@ -39,25 +39,31 @@ def _md_table(rows: list[list[str]]) -> str:
 
 def pptx(path: str):
     from pptx import Presentation
-    from pptx.enum.shapes import MSO_SHAPE_TYPE
+    from pptx.shapes.group import GroupShape
     from pptx.shapes.picture import Picture  # also covers pictures in layout placeholders
 
     sections, baseline = [], 0
 
     def walk(shapes, texts, images):
         for sh in shapes:
-            if sh.shape_type == MSO_SHAPE_TYPE.GROUP:
+            if isinstance(sh, GroupShape):  # not shape_type: it raises on shapes with no geometry
                 walk(sh.shapes, texts, images)
             elif sh.has_text_frame and sh.text_frame.text.strip():
                 texts.append(sh.text_frame.text.replace("\x0b", "\n"))  # \x0b = soft line break
             elif getattr(sh, "has_table", False):
                 texts.append(_md_table([[c.text for c in r.cells] for r in sh.table.rows]))
             elif getattr(sh, "has_chart", False):  # native chart: its data is right there, no model needed
-                for plot in sh.chart.plots:
-                    rows = [["", *map(str, plot.categories)]] + [[s.name, *map(_num, s.values)] for s in plot.series]
-                    texts.append("Chart:\n" + _md_table(rows))
+                try:
+                    for plot in sh.chart.plots:
+                        rows = [["", *map(str, plot.categories)]] + [[s.name, *map(_num, s.values)] for s in plot.series]
+                        texts.append("Chart:\n" + _md_table(rows))
+                except ValueError:  # 3D, stock and surface charts: python-pptx can't read their data
+                    texts.append("[chart: type not readable]")
             elif isinstance(sh, Picture):
-                im = _image(sh.image.blob)
+                try:
+                    im = _image(sh.image.blob)
+                except (ValueError, KeyError):  # a picture inserted as "link to file" has no bytes here
+                    im = None
                 if im:
                     images.append(im)
 
@@ -83,7 +89,7 @@ def pdf(path):  # a path or the PDF's bytes
     for n, page in enumerate(doc, 1):
         w, h = page.get_size()  # points
         baseline += image_tokens(int(w * 150 / 72), int(h * 150 / 72))
-        text = page.get_textpage().get_text_range()
+        text = page.get_textpage().get_text_range().replace("\r\n", "\n")
         images = []
         if text.strip():
             for obj in page.get_objects(filter=[pdfium_c.FPDF_PAGEOBJ_IMAGE]):

@@ -72,12 +72,12 @@ def extract(source: str) -> tuple[str, list[Section], int]:
         try:
             r = httpx.get(source, follow_redirects=True, timeout=30, headers={"User-Agent": "squeeze/0.1"})
             r.raise_for_status()
-        except httpx.HTTPError as e:
+        except (httpx.HTTPError, httpx.InvalidURL) as e:
             raise ValueError(f"could not fetch {source}: {e}") from e
         ctype = r.headers.get("content-type", "")
-        if "pdf" in ctype:
+        if "pdf" in ctype or r.content[:5] == b"%PDF-":  # many hosts label PDFs octet-stream
             return "PDF", *_guard(extractors.pdf, r.content)
-        if "json" in ctype:
+        if "json" in ctype or r.url.path.endswith(".json"):  # raw GitHub serves JSON as text/plain
             return "JSON response", *_guard(extractors.json_doc, r.text)
         if ctype.startswith("text/plain"):
             return "text file", *_text_file(r.text)
